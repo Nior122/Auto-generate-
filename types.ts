@@ -22,3 +22,12 @@ export interface Video {
   description: string;
   videoUrl: string;
 }
+
+/**
+ * Interface defining the structure of a user object from Google Sign-In.
+ */
+export interface User {
+  name: string;
+  email: string;
+  picture: string;
+}

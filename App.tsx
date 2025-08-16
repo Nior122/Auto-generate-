@@ -2,10 +2,11 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
-import React, {useState, useRef} from 'react';
+import React, {useState, useRef, useEffect} from 'react';
 import {ErrorModal} from './components/ErrorModal';
 import {
   CameraIcon,
+  SignOutIcon,
   SparklesIcon,
   StopIcon,
   TikTokRatioIcon,
@@ -13,7 +14,7 @@ import {
   YouTubeRatioIcon,
 } from './components/icons';
 import {PdfUploadPage} from './components/PdfUploadPage';
-import {Scene} from './types';
+import {Scene, User} from './types';
 import {VideoGrid} from './components/VideoGrid';
 
 import {GoogleGenAI, Type} from '@google/genai';
@@ -25,7 +26,33 @@ const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
 
 type AspectRatio = '16:9' | '9:16';
 
+// Add google to the window interface
+declare global {
+  interface Window {
+    google: any;
+  }
+}
+
 const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+function jwtDecode<T>(token: string): T | null {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map(function (c) {
+          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        })
+        .join(''),
+    );
+    return JSON.parse(jsonPayload);
+  } catch (error) {
+    console.error('Invalid token', error);
+    return null;
+  }
+}
 
 async function fileToGenerativePart(file: File) {
   const base64EncodedDataPromise = new Promise<string>((resolve) => {
@@ -85,6 +112,7 @@ async function generateImageForScene(
 }
 
 export const App: React.FC = () => {
+  const [user, setUser] = useState<User | null>(null);
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [isProcessingPdf, setIsProcessingPdf] = useState(false);
   const [characterImage, setCharacterImage] = useState<File | null>(null);
@@ -104,6 +132,69 @@ export const App: React.FC = () => {
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const stopGenerationRef = useRef(false);
   const characterImageInputRef = useRef<HTMLInputElement>(null);
+
+  const handleLoginSuccess = (credentialResponse: any) => {
+    const decoded = jwtDecode<{name: string; email: string; picture: string}>(
+      credentialResponse.credential,
+    );
+    if (decoded) {
+      setUser({
+        name: decoded.name,
+        email: decoded.email,
+        picture: decoded.picture,
+      });
+    }
+  };
+
+  const handleSignOut = () => {
+    if (window.google?.accounts?.id) {
+      window.google.accounts.id.disableAutoSelect();
+    }
+    setUser(null);
+    setScenes([]);
+    setGeneratedImages({});
+    setCharacterImage(null);
+    setCharacterStyle(null);
+  };
+
+  useEffect(() => {
+    const googleClientId = process.env.GOOGLE_CLIENT_ID;
+    if (!googleClientId) {
+      console.warn(
+        'Google Client ID is not configured. Running in demo mode.',
+      );
+      setUser({
+        name: 'Demo User',
+        email: 'demo@example.com',
+        picture: `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23ddd'/%3E%3Ctext x='50' y='55' font-family='Arial' font-size='40' fill='%23555' text-anchor='middle' dominant-baseline='middle'%3EDU%3C/text%3E%3C/svg%3E`,
+      });
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      if (window.google) {
+        clearInterval(intervalId);
+        window.google.accounts.id.initialize({
+          client_id: googleClientId,
+          callback: handleLoginSuccess,
+        });
+
+        const signInButtonContainer = document.getElementById('signInButton');
+        if (signInButtonContainer) {
+          window.google.accounts.id.renderButton(signInButtonContainer, {
+            theme: 'outline',
+            size: 'large',
+            type: 'standard',
+            text: 'signin_with',
+            shape: 'rectangular',
+          });
+        }
+        window.google.accounts.id.prompt();
+      }
+    }, 100);
+
+    return () => clearInterval(intervalId);
+  }, []);
 
   const handlePdfUpload = async (file: File) => {
     setIsProcessingPdf(true);
@@ -269,26 +360,76 @@ Respond with a single JSON object containing two keys:
     }
   };
 
-  if (scenes.length === 0) {
+  if (!user) {
     return (
-      <PdfUploadPage
-        onPdfUpload={handlePdfUpload}
-        isProcessing={isProcessingPdf}
-      />
+      <div className="min-h-screen bg-gray-900 text-gray-100 font-sans flex flex-col items-center justify-center p-4 animate-fade-in">
+        {error && <ErrorModal message={error} onClose={() => setError(null)} />}
+        <div className="text-center mb-12">
+          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 text-transparent bg-clip-text inline-flex items-center gap-4">
+            <SparklesIcon className="w-10 h-10 md:w-12 md:h-12" />
+            <span>Storyboard Generator</span>
+          </h1>
+          <p className="text-gray-400 mt-2 text-lg">
+            Sign in with your Google account to create your story.
+          </p>
+        </div>
+        <div
+          id="signInButton"
+          className="transition-opacity duration-300"
+        ></div>
+      </div>
     );
   }
 
   const isGlobalOperationRunning = isGeneratingAll || isAnalyzingStyle;
 
+  const AppHeader = () => (
+    <header className="mb-6 pb-6 border-b border-gray-700/50 flex flex-wrap justify-between items-center gap-4">
+      <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 text-transparent bg-clip-text inline-flex items-center gap-3">
+        <SparklesIcon className="w-8 h-8 md:w-10 md:h-10" />
+        <span>Storyboard Generator</span>
+      </h1>
+      <div className="flex items-center gap-3">
+        <img
+          src={user.picture}
+          alt="User profile"
+          className="w-10 h-10 rounded-full border-2 border-gray-600"
+        />
+        <div className="text-right hidden sm:block">
+          <div className="font-semibold text-white">{user.name}</div>
+          <div className="text-xs text-gray-400">{user.email}</div>
+        </div>
+        <button
+          onClick={handleSignOut}
+          className="p-2 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
+          aria-label="Sign out"
+        >
+          <SignOutIcon className="w-6 h-6" />
+        </button>
+      </div>
+    </header>
+  );
+
+  if (scenes.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-gray-100 font-sans p-4 sm:p-6 lg:p-8 animate-fade-in">
+        <AppHeader />
+        <main>
+          <PdfUploadPage
+            onPdfUpload={handlePdfUpload}
+            isProcessing={isProcessingPdf}
+          />
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 font-sans p-4 sm:p-6 lg:p-8 animate-fade-in">
       {error && <ErrorModal message={error} onClose={() => setError(null)} />}
-      <header className="mb-8">
-        <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 text-transparent bg-clip-text inline-flex items-center gap-3">
-          <SparklesIcon className="w-8 h-8 md:w-10 md:h-10" />
-          <span>Storyboard Generator</span>
-        </h1>
-        <div className="mt-4 flex flex-wrap items-center gap-4">
+      <AppHeader />
+      <main>
+        <div className="mb-8 flex flex-wrap items-center gap-4">
           <div className="relative">
             <input
               type="file"
@@ -361,9 +502,6 @@ Respond with a single JSON object containing two keys:
             </button>
           </div>
         </div>
-      </header>
-
-      <main>
         <div className="mb-6 flex flex-wrap gap-4 items-center">
           {!isGeneratingAll ? (
             <button

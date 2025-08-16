@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import React from 'react';
-import {DocumentArrowUpIcon, SparklesIcon} from './icons';
+import {DocumentArrowUpIcon} from './icons';
 
 interface PdfUploadPageProps {
   onPdfUpload: (file: File) => void;
@@ -38,12 +38,8 @@ export const PdfUploadPage: React.FC<PdfUploadPageProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 font-sans flex flex-col items-center justify-center p-4 animate-fade-in">
+    <div className="flex flex-col items-center justify-center p-4 animate-fade-in mt-8">
       <div className="text-center mb-8">
-        <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 text-transparent bg-clip-text inline-flex items-center gap-4">
-          <SparklesIcon className="w-10 h-10 md:w-12 md:h-12" />
-          <span>Storyboard Generator</span>
-        </h1>
         <p className="text-gray-400 mt-2 text-lg">
           Upload your script in PDF format to get started.
         </p>
