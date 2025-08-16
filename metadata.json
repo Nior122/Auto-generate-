@@ -1,0 +1,6 @@
+{
+  "name": "Storyboard Generator",
+  "description": "Generate images from a script to create a visual storyboard.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
